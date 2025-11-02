@@ -21,6 +21,13 @@ import {
   WalletInfo,
   WalletBalance,
 } from "../utils/wallet";
+import {
+  Wallet,
+  WalletFactory,
+  PetraWallet,
+  MartianWallet,
+  PontemWallet
+} from "../wallets/AptosWalletAdapter";
 
 interface UseAptosWalletReturn {
   // Connection state
@@ -30,9 +37,14 @@ interface UseAptosWalletReturn {
   walletInfo: WalletInfo | null;
   balance: WalletBalance | null;
   network: AptosNetwork;
+  selectedWallet: string | null;
+
+  // Wallet detection
+  availableWallets: WalletInfo[];
+  installedWallets: WalletInfo[];
 
   // Actions
-  connect: (privateKey?: string) => Promise<void>;
+  connect: (walletName: string, privateKey?: string) => Promise<void>;
   disconnect: () => void;
   switchNetwork: (network: AptosNetwork) => Promise<void>;
   refreshBalance: () => Promise<void>;

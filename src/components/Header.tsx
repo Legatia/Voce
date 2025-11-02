@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
-import { Wallet, Trophy, User, ShoppingBag } from "lucide-react";
+import { Wallet, Trophy, User, ShoppingBag, Sparkles, Radio } from "lucide-react";
 import { Link } from "react-router-dom";
-import { WalletConnect } from "@/aptos/components/WalletConnect";
+import { RealWalletConnect } from "@/aptos/components/RealWalletConnect";
 
 const Header = () => {
   return (
@@ -33,6 +33,10 @@ const Header = () => {
             <Link to="/leaderboard" className="text-foreground hover:text-primary transition-colors">
               Leaderboard
             </Link>
+            <Link to="/live-streaming" className="text-foreground hover:text-primary transition-colors flex items-center gap-1">
+              <Radio className="w-4 h-4" />
+              Live Stream
+            </Link>
           </nav>
 
           <div className="flex items-center gap-3">
@@ -42,7 +46,7 @@ const Header = () => {
                 <span className="hidden sm:inline">Shop</span>
               </Button>
             </Link>
-            <WalletConnect />
+            <RealWalletConnect />
             <Link to="/profile">
               <Button variant="ghost" size="icon">
                 <User className="w-5 h-5" />

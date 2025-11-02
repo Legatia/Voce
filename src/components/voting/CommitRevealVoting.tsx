@@ -10,6 +10,10 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Progress } from "@/components/ui/progress";
 import { Lock, Unlock, Eye, EyeOff, Hash, Clock, CheckCircle, AlertCircle } from "lucide-react";
 import { useWallet } from "@/contexts/WalletContext";
+import { secureVotingService } from "@/aptos/services/secureVotingService";
+import { useVoting } from "@/hooks/useVoting";
+import { financialSystemService } from "@/aptos/services/financialSystemService";
+import VoteTrackingGraph from "./VoteTrackingGraph";
 
 interface CommitRevealVotingProps {
   event: {
@@ -72,6 +76,13 @@ const CommitRevealVoting = ({ event, onCommit, onReveal }: CommitRevealVotingPro
       const data = JSON.parse(stored);
       setUserCommitment(data.commitment);
       setUserReveal(data.reveal);
+
+      // Restore selected option and salt from saved commitment
+      if (data.commitment) {
+        setSelectedOption(data.commitment.optionId || "");
+        setSalt(data.commitment.salt || "");
+      }
+
       if (data.reveal) {
         setActiveTab("reveal");
       }
@@ -87,12 +98,14 @@ const CommitRevealVoting = ({ event, onCommit, onReveal }: CommitRevealVotingPro
     try {
       await onCommit?.(event.id, commitment, parseFloat(stakeAmount));
 
-      // Save commitment locally
+      // Save commitment locally (backup for UI state)
       const commitmentData = {
         eventId: event.id,
         commitment,
         stake: parseFloat(stakeAmount),
         timestamp: Date.now(),
+        optionId: selectedOption,
+        salt: salt,
       };
 
       const key = `commitment_${event.id}`;
@@ -122,7 +135,7 @@ const CommitRevealVoting = ({ event, onCommit, onReveal }: CommitRevealVotingPro
     try {
       await onReveal?.(event.id, selectedOption, salt);
 
-      // Save reveal locally
+      // Save reveal locally (backup for UI state)
       const revealData = {
         eventId: event.id,
         optionId: selectedOption,
@@ -154,253 +167,274 @@ const CommitRevealVoting = ({ event, onCommit, onReveal }: CommitRevealVotingPro
   const canCommit = event.commitPhase && timeUntilCommit > 0 && !userCommitment;
   const canReveal = event.revealPhase && timeUntilReveal > 0 && userCommitment && !userReveal;
 
+  // Check if voting has ended (both commit and reveal phases are over)
+  const votingEnded = !event.commitPhase && !event.revealPhase && (timeUntilCommit <= 0 && timeUntilReveal <= 0);
+
   return (
-    <Card className="w-full max-w-2xl">
-      <CardHeader>
-        <div className="flex justify-between items-start">
-          <div>
-            <CardTitle className="text-xl">{event.title}</CardTitle>
-            <CardDescription>
-              Commit-Reveal Voting System - Prevents front-running and herd behavior
-            </CardDescription>
+    <>
+      <Card className="w-full max-w-2xl">
+        <CardHeader>
+          <div className="flex justify-between items-start">
+            <div>
+              <CardTitle className="text-xl">{event.title}</CardTitle>
+              <CardDescription>
+                Commit-Reveal Voting System - Prevents front-running and herd behavior
+              </CardDescription>
+            </div>
+            <div className="flex gap-2">
+              {event.commitPhase && (
+                <Badge className="bg-orange-500">
+                  <Lock className="w-3 h-3 mr-1" />
+                  Commit Phase
+                </Badge>
+              )}
+              {event.revealPhase && (
+                <Badge className="bg-green-500">
+                  <Unlock className="w-3 h-3 mr-1" />
+                  Reveal Phase
+                </Badge>
+              )}
+            </div>
           </div>
-          <div className="flex gap-2">
-            {event.commitPhase && (
-              <Badge className="bg-orange-500">
-                <Lock className="w-3 h-3 mr-1" />
-                Commit Phase
-              </Badge>
-            )}
-            {event.revealPhase && (
-              <Badge className="bg-green-500">
-                <Unlock className="w-3 h-3 mr-1" />
-                Reveal Phase
-              </Badge>
-            )}
-          </div>
-        </div>
-      </CardHeader>
+        </CardHeader>
 
-      <CardContent>
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "commit" | "reveal")}>
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="commit" disabled={userCommitment}>
+        <CardContent>
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "commit" | "reveal")}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="commit" disabled={userCommitment}>
+                {userCommitment ? (
+                  <>
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Committed
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-4 h-4 mr-2" />
+                    Commit Vote
+                  </>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="reveal" disabled={!userCommitment}>
+                {userReveal ? (
+                  <>
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Revealed
+                  </>
+                ) : (
+                  <>
+                    <Unlock className="w-4 h-4 mr-2" />
+                    Reveal Vote
+                  </>
+                )}
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="commit" className="space-y-4">
               {userCommitment ? (
-                <>
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  Committed
-                </>
-              ) : (
-                <>
-                  <Lock className="w-4 h-4 mr-2" />
-                  Commit Vote
-                </>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="reveal" disabled={!userCommitment}>
-              {userReveal ? (
-                <>
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  Revealed
-                </>
-              ) : (
-                <>
-                  <Unlock className="w-4 h-4 mr-2" />
-                  Reveal Vote
-                </>
-              )}
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="commit" className="space-y-4">
-            {userCommitment ? (
-              <Alert className="bg-green-50 border-green-200">
-                <CheckCircle className="h-4 w-4" />
-                <AlertDescription>
-                  <strong>Vote Committed!</strong> Your commitment hash: {userCommitment.commitment}
-                  <br />
-                  <span className="text-xs">
-                    Save your salt: {salt || "Lost - check your records"}
-                  </span>
-                </AlertDescription>
-              </Alert>
-            ) : (
-              <>
-                <Alert className="bg-blue-50 border-blue-200">
-                  <AlertCircle className="h-4 w-4" />
+                <Alert className="bg-green-50 border-green-200">
+                  <CheckCircle className="h-4 w-4" />
                   <AlertDescription>
-                    <strong>Commit Phase:</strong> Select your option and generate a commitment.
-                    Your vote will be hidden until the reveal phase begins.
+                    <strong>Vote Committed!</strong> Your commitment hash: {userCommitment.commitment}
+                    <br />
+                    <span className="text-xs">
+                      Save your salt: {userCommitment.salt || salt || "Lost - check your records"}
+                    </span>
                   </AlertDescription>
                 </Alert>
+              ) : (
+                <>
+                  <Alert className="bg-blue-50 border-blue-200">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      <strong>Commit Phase:</strong> Select your option and generate a commitment.
+                      Your vote will be hidden until the reveal phase begins.
+                    </AlertDescription>
+                  </Alert>
 
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Select Option</Label>
-                    <RadioGroup value={selectedOption} onValueChange={setSelectedOption}>
-                      {event.options.map((option) => (
-                        <div key={option.id} className="flex items-center space-x-2">
-                          <RadioGroupItem value={option.id} id={`commit-${option.id}`} />
-                          <Label htmlFor={`commit-${option.id}`}>{option.text}</Label>
-                        </div>
-                      ))}
-                    </RadioGroup>
-                  </div>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Select Option</Label>
+                      <RadioGroup value={selectedOption} onValueChange={setSelectedOption}>
+                        {event.options.map((option) => (
+                          <div key={option.id} className="flex items-center space-x-2">
+                            <RadioGroupItem value={option.id} id={`commit-${option.id}`} />
+                            <Label htmlFor={`commit-${option.id}`}>{option.text}</Label>
+                          </div>
+                        ))}
+                      </RadioGroup>
+                    </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="salt">Secret Salt</Label>
-                    <div className="flex gap-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="salt">Secret Salt</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="salt"
+                          type={showSalt ? "text" : "password"}
+                          value={salt}
+                          onChange={(e) => setSalt(e.target.value)}
+                          placeholder="Generate or enter a secret salt"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={generateSalt}
+                          disabled={isProcessing}
+                        >
+                          Generate
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setShowSalt(!showSalt)}
+                        >
+                          {showSalt ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        This salt is needed to reveal your vote. Save it securely!
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="stake">Stake Amount (APT)</Label>
                       <Input
-                        id="salt"
-                        type={showSalt ? "text" : "password"}
+                        id="stake"
+                        type="number"
+                        value={stakeAmount}
+                        onChange={(e) => setStakeAmount(e.target.value)}
+                        placeholder="Enter amount to stake"
+                        min="1"
+                        step="0.1"
+                      />
+                    </div>
+
+                    {commitment && (
+                      <div className="space-y-2">
+                        <Label>Generated Commitment</Label>
+                        <div className="p-3 bg-muted rounded-lg font-mono text-sm">
+                          <Hash className="w-4 h-4 inline mr-2" />
+                          {commitment}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span>Time Remaining:</span>
+                        <span>{timeUntilCommit > 0 ? `${Math.floor(timeUntilCommit / 3600)}h ${Math.floor((timeUntilCommit % 3600) / 60)}m` : "Ended"}</span>
+                      </div>
+                      <Progress
+                        value={Math.max(0, Math.min(100, ((timeUntilCommit / (24 * 3600)) * 100)))}
+                        className="h-2"
+                      />
+                    </div>
+
+                    <Button
+                      onClick={handleCommit}
+                      disabled={!canCommit || !isConnected || isProcessing}
+                      className="w-full"
+                    >
+                      {isProcessing ? "Processing..." : "Commit Vote"}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </TabsContent>
+
+            <TabsContent value="reveal" className="space-y-4">
+              {userReveal ? (
+                <Alert className="bg-green-50 border-green-200">
+                  <CheckCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    <strong>Vote Revealed!</strong> Your vote for "{event.options.find(o => o.id === userReveal.optionId)?.text}" has been successfully revealed.
+                  </AlertDescription>
+                </Alert>
+              ) : userCommitment ? (
+                <>
+                  <Alert className="bg-orange-50 border-orange-200">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      <strong>Reveal Phase:</strong> Enter your original option and salt to reveal your vote.
+                      Your commitment: {userCommitment.commitment}
+                    </AlertDescription>
+                  </Alert>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Select Original Option</Label>
+                      <RadioGroup value={selectedOption} onValueChange={setSelectedOption}>
+                        {event.options.map((option) => (
+                          <div key={option.id} className="flex items-center space-x-2">
+                            <RadioGroupItem value={option.id} id={`reveal-${option.id}`} />
+                            <Label htmlFor={`reveal-${option.id}`}>{option.text}</Label>
+                          </div>
+                        ))}
+                      </RadioGroup>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="reveal-salt">Your Secret Salt</Label>
+                      <Input
+                        id="reveal-salt"
+                        type="password"
                         value={salt}
                         onChange={(e) => setSalt(e.target.value)}
-                        placeholder="Generate or enter a secret salt"
+                        placeholder="Enter the salt you used during commit"
                       />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={generateSalt}
-                        disabled={isProcessing}
-                      >
-                        Generate
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => setShowSalt(!showSalt)}
-                      >
-                        {showSalt ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </Button>
+                      <p className="text-xs text-muted-foreground">
+                        This must match the salt you used during the commit phase.
+                      </p>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      This salt is needed to reveal your vote. Save it securely!
-                    </p>
-                  </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="stake">Stake Amount (APT)</Label>
-                    <Input
-                      id="stake"
-                      type="number"
-                      value={stakeAmount}
-                      onChange={(e) => setStakeAmount(e.target.value)}
-                      placeholder="Enter amount to stake"
-                      min="1"
-                      step="0.1"
-                    />
-                  </div>
-
-                  {commitment && (
                     <div className="space-y-2">
-                      <Label>Generated Commitment</Label>
-                      <div className="p-3 bg-muted rounded-lg font-mono text-sm">
-                        <Hash className="w-4 h-4 inline mr-2" />
-                        {commitment}
+                      <div className="flex justify-between text-sm">
+                        <span>Time Remaining:</span>
+                        <span>{timeUntilReveal > 0 ? `${Math.floor(timeUntilReveal / 3600)}h ${Math.floor((timeUntilReveal % 3600) / 60)}m` : "Ended"}</span>
                       </div>
+                      <Progress
+                        value={Math.max(0, Math.min(100, ((timeUntilReveal / (24 * 3600)) * 100)))}
+                        className="h-2"
+                      />
                     </div>
-                  )}
 
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>Time Remaining:</span>
-                      <span>{timeUntilCommit > 0 ? `${Math.floor(timeUntilCommit / 3600)}h ${Math.floor((timeUntilCommit % 3600) / 60)}m` : "Ended"}</span>
-                    </div>
-                    <Progress
-                      value={Math.max(0, Math.min(100, ((timeUntilCommit / (24 * 3600)) * 100)))}
-                      className="h-2"
-                    />
+                    <Button
+                      onClick={handleReveal}
+                      disabled={!canReveal || !isConnected || isProcessing}
+                      className="w-full"
+                    >
+                      {isProcessing ? "Processing..." : "Reveal Vote"}
+                    </Button>
                   </div>
-
-                  <Button
-                    onClick={handleCommit}
-                    disabled={!canCommit || !isConnected || isProcessing}
-                    className="w-full"
-                  >
-                    {isProcessing ? "Processing..." : "Commit Vote"}
-                  </Button>
-                </div>
-              </>
-            )}
-          </TabsContent>
-
-          <TabsContent value="reveal" className="space-y-4">
-            {userReveal ? (
-              <Alert className="bg-green-50 border-green-200">
-                <CheckCircle className="h-4 w-4" />
-                <AlertDescription>
-                  <strong>Vote Revealed!</strong> Your vote for "{event.options.find(o => o.id === userReveal.optionId)?.text}" has been successfully revealed.
-                </AlertDescription>
-              </Alert>
-            ) : userCommitment ? (
-              <>
-                <Alert className="bg-orange-50 border-orange-200">
+                </>
+              ) : (
+                <Alert className="bg-gray-50 border-gray-200">
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
-                    <strong>Reveal Phase:</strong> Enter your original option and salt to reveal your vote.
-                    Your commitment: {userCommitment.commitment}
+                    <strong>Not Committed:</strong> You must commit your vote during the commit phase before you can reveal it.
                   </AlertDescription>
                 </Alert>
+              )}
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
 
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Select Original Option</Label>
-                    <RadioGroup value={selectedOption} onValueChange={setSelectedOption}>
-                      {event.options.map((option) => (
-                        <div key={option.id} className="flex items-center space-x-2">
-                          <RadioGroupItem value={option.id} id={`reveal-${option.id}`} />
-                          <Label htmlFor={`reveal-${option.id}`}>{option.text}</Label>
-                        </div>
-                      ))}
-                    </RadioGroup>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="reveal-salt">Your Secret Salt</Label>
-                    <Input
-                      id="reveal-salt"
-                      type="password"
-                      value={salt}
-                      onChange={(e) => setSalt(e.target.value)}
-                      placeholder="Enter the salt you used during commit"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      This must match the salt you used during the commit phase.
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>Time Remaining:</span>
-                      <span>{timeUntilReveal > 0 ? `${Math.floor(timeUntilReveal / 3600)}h ${Math.floor((timeUntilReveal % 3600) / 60)}m` : "Ended"}</span>
-                    </div>
-                    <Progress
-                      value={Math.max(0, Math.min(100, ((timeUntilReveal / (24 * 3600)) * 100)))}
-                      className="h-2"
-                    />
-                  </div>
-
-                  <Button
-                    onClick={handleReveal}
-                    disabled={!canReveal || !isConnected || isProcessing}
-                    className="w-full"
-                  >
-                    {isProcessing ? "Processing..." : "Reveal Vote"}
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <Alert className="bg-gray-50 border-gray-200">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  <strong>Not Committed:</strong> You must commit your vote during the commit phase before you can reveal it.
-                </AlertDescription>
-              </Alert>
-            )}
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-    </Card>
+      {/* Vote Tracking Graph - Show after voting deadline */}
+      {votingEnded && (
+        <div className="mt-6">
+          <VoteTrackingGraph
+            event={{
+              ...event,
+              status: "resolved"
+            }}
+            onShowDetails={() => {
+              // Could show a more detailed analysis modal
+              console.log("Show detailed analysis");
+            }}
+          />
+        </div>
+      )}
+    </>
   );
 };
 

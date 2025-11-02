@@ -1,0 +1,164 @@
+[package]
+name = "VocePredictionMarket"
+version = "1.0.0"
+upgrade_policy = "immutable"
+
+[addresses]
+voce = "0xb244f93f5d9dd71073cae0e77a4c8ee093d5562a1b89f03aaf3a828fb390c2c3"
+admin = "0xb244f93f5d9dd71073cae0e77a4c8ee093d5562a1b89f03aaf3a828fb390c2c3"
+voce_admin = "0xb244f93f5d9dd71073cae0e77a4c8ee093d5562a1b89f03aaf3a828fb390c2c3"
+
+[dev-addresses]
+voce = "0xb244f93f5d9dd71073cae0e77a4c8ee093d5562a1b89f03aaf3a828fb390c2c3"
+admin = "0xb244f93f5d9dd71073cae0e77a4c8ee093d5562a1b89f03aaf3a828fb390c2c3"
+voce_admin = "0xb244f93f5d9dd71073cae0e77a4c8ee093d5562a1b89f03aaf3a828fb390c2c3"
+
+[dependencies]
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-framework.git", subdir = "aptos-framework", rev = "mainnet" }
+
+# Security configuration for compilation
+[profile.release]
+opt-level = "z"
+lto = true
+panic = "abort"
+overflow-checks = true
+
+# Development profile with extensive checks
+[profile.dev]
+opt-level = 0
+debug = true
+overflow-checks = true
+extra-checks = true
+
+# Security audit configuration
+[security]
+# Enable strict overflow checks
+strict-overflow-checks = true
+
+# Enable reentrancy protection checks
+reentrancy-protection = true
+
+# Enable access control checks
+access-control-verification = true
+
+# Enable resource exhaustion checks
+resource-exhaustion-checks = true
+
+# Enable integer bounds checking
+integer-bounds-checking = true
+
+# Enable state validation checks
+state-validation = true
+
+# Maximum number of operations per transaction
+max-operations-per-tx = 100
+
+# Maximum gas per transaction
+max-gas-per-tx = 1000000
+
+# Maximum execution time per transaction
+max-execution-time-ms = 5000
+
+[testing]
+# Enable comprehensive testing features
+enable-fuzzing = true
+enable-property-testing = true
+enable-invariant-testing = true
+
+# Test gas limits
+test-gas-limit = 5000000
+
+# Enable memory safety checks
+memory-safety-checks = true
+
+# Enable state consistency checks
+state-consistency-checks = true
+
+[auditing]
+# Enable audit logging
+audit-log-enabled = true
+
+# Critical operations logging
+log-critical-operations = true
+
+# Access control logging
+log-access-control = true
+
+# State change logging
+log-state-changes = true
+
+# Error logging
+log-errors = true
+
+# Performance logging
+log-performance-metrics = true
+
+[deployment]
+# Multi-stage deployment configuration
+[testnet]
+enable-testnet-deployment = true
+testnet-chain-id = 2
+testnet-max-gas = 1000000
+testnet-timeout-seconds = 30
+
+[mainnet]
+enable-mainnet-deployment = false  # Default to false for safety
+mainnet-chain-id = 1
+mainnet-max-gas = 2000000
+mainnet-timeout-seconds = 60
+mainnet-require-multi-sig = true
+
+# Rollback configuration
+[rollback]
+enable-rollback = true
+rollback-timeout-seconds = 3600
+max-rollback-attempts = 3
+
+[monitoring]
+# Runtime monitoring configuration
+enable-runtime-monitoring = true
+monitoring-interval-seconds = 60
+alert-thresholds = { "gas-usage": 80, "error-rate": 5, "response-time": 1000 }
+
+# Health checks
+health-check-enabled = true
+health-check-interval-seconds = 30
+
+# Performance metrics
+track-performance-metrics = true
+metrics-retention-days = 30
+
+[multi-sig]
+# Multi-signature configuration
+required-signatures = 3
+max-signers = 5
+signature-timeout-seconds = 86400
+enable-signature-rotation = true
+
+[rate-limiting]
+# Rate limiting configuration
+enable-rate-limiting = true
+max-requests-per-minute = 60
+max-requests-per-hour = 1000
+burst-limit = 10
+
+[oracle]
+# Oracle configuration for truth rewards
+enable-oracle-verification = true
+min-oracle-signatures = 2
+oracle-timeout-seconds = 3600
+max-oracle-response-time = 30000
+
+[escrow]
+# Escrow system configuration
+enable-escrow-system = true
+escrow-time-lock-seconds = 3600
+max-escrow-amount = 1000000
+enable-escrow-insurance = true
+
+[emergency]
+# Emergency controls
+enable-emergency-pause = true
+enable-emergency-withdrawal = true
+emergency-pause-duration = 86400
+emergency-admin-multi-sig-required = true

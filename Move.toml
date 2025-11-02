@@ -1,0 +1,17 @@
+[package]
+name = "VocePredictionMarket"
+version = "1.0.0"
+upgrade_policy = "immutable"
+
+[addresses]
+voce = "b244f93f5d9dd71073cae0e77a4c8ee093d5562a1b89f03aaf3a828fb390c2c3"
+admin = "b244f93f5d9dd71073cae0e77a4c8ee093d5562a1b89f03aaf3a828fb390c2c3"
+voce_admin = "b244f93f5d9dd71073cae0e77a4c8ee093d5562a1b89f03aaf3a828fb390c2c3"
+
+[dev-addresses]
+voce = "0x2"
+admin = "0x3"
+voce_admin = "0x4"
+
+[dependencies]
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-framework.git", subdir = "aptos-framework", rev = "mainnet" }

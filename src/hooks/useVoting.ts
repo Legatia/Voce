@@ -1,5 +1,7 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useWallet } from "@/contexts/WalletContext";
+import { secureVotingService } from "@/aptos/services/secureVotingService";
+import { financialSystemService } from "@/aptos/services/financialSystemService";
 
 interface Vote {
   eventId: string;
@@ -7,12 +9,27 @@ interface Vote {
   stake: number;
   timestamp: number;
   transactionHash?: string;
+  commitmentHash?: string;
+  salt?: string;
+  isRevealed?: boolean;
 }
 
 interface VotingState {
   votes: Vote[];
   isProcessing: boolean;
   error: string | null;
+  useSecureVoting: boolean;
+  commitmentPhase: boolean;
+  revealPhase: boolean;
+}
+
+interface OnChainVote {
+  eventId: number;
+  commitmentHash: Uint8Array;
+  stakeAmount: number;
+  salt: string;
+  revealed: boolean;
+  transactionHash: string;
 }
 
 export const useVoting = () => {
@@ -21,7 +38,29 @@ export const useVoting = () => {
     votes: [],
     isProcessing: false,
     error: null,
+    useSecureVoting: process.env.NEXT_PUBLIC_ENABLE_SECURE_VOTING === "true",
+    commitmentPhase: false,
+    revealPhase: false,
   });
+
+  // Initialize smart contract systems
+  useEffect(() => {
+    const initializeSystems = async () => {
+      if (votingState.useSecureVoting && account) {
+        try {
+          const isSecureVotingInitialized = await secureVotingService.isSecureVotingInitialized();
+          const isFinancialSystemInitialized = await financialSystemService.isFinancialSystemInitialized();
+
+          console.log("Secure Voting Initialized:", isSecureVotingInitialized);
+          console.log("Financial System Initialized:", isFinancialSystemInitialized);
+        } catch (error) {
+          console.error("Failed to initialize systems:", error);
+        }
+      }
+    };
+
+    initializeSystems();
+  }, [votingState.useSecureVoting, account]);
 
   // Load user's voting history from localStorage
   const loadVotingHistory = useCallback(() => {
@@ -49,7 +88,7 @@ export const useVoting = () => {
     }
   }, [account]);
 
-  // Cast a vote
+  // Cast a vote using smart contracts
   const castVote = useCallback(async (
     eventId: string,
     optionId: string,
@@ -62,23 +101,118 @@ export const useVoting = () => {
     setVotingState(prev => ({ ...prev, isProcessing: true, error: null }));
 
     try {
-      // Simulate blockchain transaction
-      const transactionHash = `0x${Math.random().toString(16).substr(2, 64)}`;
+      let transactionHash: string;
 
-      // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      if (votingState.useSecureVoting) {
+        // Use secure commit-reveal voting
+        const salt = secureVotingService.generateSecureSalt();
+        const commitmentHash = secureVotingService.generateCommitmentHash(
+          parseInt(optionId),
+          salt
+        );
 
-      const newVote: Vote = {
-        eventId,
-        optionId,
-        stake,
-        timestamp: Date.now(),
-        transactionHash,
-      };
+        // For demo, we'll use a mock event ID
+        const numericEventId = parseInt(eventId.replace('event_', '')) || 1;
 
-      // Update voting history
+        // Place commitment on blockchain
+        transactionHash = await secureVotingService.placeCommitment(
+          account,
+          numericEventId,
+          parseInt(optionId),
+          salt,
+          stake
+        );
+
+        const newVote: Vote = {
+          eventId,
+          optionId,
+          stake,
+          timestamp: Date.now(),
+          transactionHash,
+          commitmentHash: Array.from(commitmentHash).toString(),
+          salt,
+          isRevealed: false,
+        };
+
+        // Update voting history
+        const currentVotes = loadVotingHistory();
+        const updatedVotes = [...currentVotes, newVote];
+        saveVotingHistory(updatedVotes);
+
+        setVotingState(prev => ({
+          ...prev,
+          votes: updatedVotes,
+          isProcessing: false,
+        }));
+      } else {
+        // Legacy voting (fallback)
+        transactionHash = `0x${Math.random().toString(16).substr(2, 64)}`;
+
+        // Simulate network delay
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        const newVote: Vote = {
+          eventId,
+          optionId,
+          stake,
+          timestamp: Date.now(),
+          transactionHash,
+        };
+
+        // Update voting history
+        const currentVotes = loadVotingHistory();
+        const updatedVotes = [...currentVotes, newVote];
+        saveVotingHistory(updatedVotes);
+
+        setVotingState(prev => ({
+          ...prev,
+          votes: updatedVotes,
+          isProcessing: false,
+        }));
+      }
+
+      return transactionHash;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      setVotingState(prev => ({
+        ...prev,
+        isProcessing: false,
+        error: errorMessage,
+      }));
+      throw error;
+    }
+  }, [isConnected, account, loadVotingHistory, saveVotingHistory, votingState.useSecureVoting]);
+
+  // Reveal a vote (for secure voting)
+  const revealVote = useCallback(async (
+    eventId: string,
+    optionId: string,
+    salt: string
+  ): Promise<string> => {
+    if (!isConnected || !account || !votingState.useSecureVoting) {
+      throw new Error("Secure voting not enabled or wallet not connected");
+    }
+
+    setVotingState(prev => ({ ...prev, isProcessing: true, error: null }));
+
+    try {
+      const numericEventId = parseInt(eventId.replace('event_', '')) || 1;
+
+      // Reveal vote on blockchain
+      const transactionHash = await secureVotingService.revealVote(
+        account,
+        numericEventId,
+        parseInt(optionId),
+        salt
+      );
+
+      // Update vote in history
       const currentVotes = loadVotingHistory();
-      const updatedVotes = [...currentVotes, newVote];
+      const updatedVotes = currentVotes.map(vote =>
+        vote.eventId === eventId
+          ? { ...vote, isRevealed: true }
+          : vote
+      );
       saveVotingHistory(updatedVotes);
 
       setVotingState(prev => ({
@@ -97,7 +231,7 @@ export const useVoting = () => {
       }));
       throw error;
     }
-  }, [isConnected, account, loadVotingHistory, saveVotingHistory]);
+  }, [isConnected, account, votingState.useSecureVoting, loadVotingHistory, saveVotingHistory]);
 
   // Check if user has voted on an event
   const hasVoted = useCallback((eventId: string): boolean => {
@@ -151,9 +285,13 @@ export const useVoting = () => {
     votes: votingState.votes,
     isProcessing: votingState.isProcessing,
     error: votingState.error,
+    useSecureVoting: votingState.useSecureVoting,
+    commitmentPhase: votingState.commitmentPhase,
+    revealPhase: votingState.revealPhase,
 
     // Actions
     castVote,
+    revealVote,
     hasVoted,
     getUserVote,
     getVotingStats,

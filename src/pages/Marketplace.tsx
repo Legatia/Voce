@@ -5,13 +5,15 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Coins, Wallet, Ticket, Image as ImageIcon, Sparkles } from "lucide-react";
+import { Coins, Wallet, Ticket, Image as ImageIcon, Sparkles, Gift, Zap } from "lucide-react";
 import { MARKETPLACE_ITEMS, MarketplaceItem } from "@/types/marketplace";
 import { useToast } from "@/hooks/use-toast";
+import { useGamification } from "@/hooks/useGamification";
 
 const Marketplace = () => {
   const [activeTab, setActiveTab] = useState("all");
   const { toast } = useToast();
+  const { progress, openMysteryCrate } = useGamification();
 
   const filterItems = (type?: 'ticket' | 'nft') => {
     if (!type) return MARKETPLACE_ITEMS;
@@ -33,6 +35,31 @@ const Marketplace = () => {
       title: "Purchase Successful!",
       description: `You bought ${item.name} with ${paymentMethod === 'coins' ? `${item.priceCoins} coins` : item.priceCrypto}`,
     });
+  };
+
+  const handleOpenMysteryCrate = async (crateType: 'common_crate' | 'rare_crate') => {
+    if (!progress || progress.xp < (crateType === 'common_crate' ? 50 : 150)) {
+      toast({
+        title: "Insufficient XP",
+        description: `You need ${crateType === 'common_crate' ? 50 : 150} XP to open this crate`,
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      await openMysteryCrate(crateType);
+      toast({
+        title: "Mystery Crate Opened! 🎉",
+        description: `You've opened a ${crateType === 'common_crate' ? 'Belief' : 'Enchanted Belief'} crate and received rewards!`,
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to Open Crate",
+        description: "Something went wrong. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
   const renderItemCard = (item: MarketplaceItem) => (
@@ -109,7 +136,7 @@ const Marketplace = () => {
         {/* User Balance */}
         <Card className="mb-8 bg-gradient-card">
           <CardContent className="pt-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-full bg-warning/20 flex items-center justify-center">
                   <Coins className="w-6 h-6 text-warning" />
@@ -128,13 +155,22 @@ const Marketplace = () => {
                   <p className="text-2xl font-bold">125.50 USDC</p>
                 </div>
               </div>
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-success/20 flex items-center justify-center">
+                  <Zap className="w-6 h-6 text-success" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Experience Points</p>
+                  <p className="text-2xl font-bold">{progress?.xp?.toLocaleString() || 0}</p>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
 
         {/* Marketplace Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full md:w-auto grid-cols-3">
+          <TabsList className="grid w-full md:w-auto grid-cols-4">
             <TabsTrigger value="all">All Items</TabsTrigger>
             <TabsTrigger value="tickets">
               <Ticket className="w-4 h-4 mr-2" />
@@ -143,6 +179,10 @@ const Marketplace = () => {
             <TabsTrigger value="nfts">
               <ImageIcon className="w-4 h-4 mr-2" />
               NFTs
+            </TabsTrigger>
+            <TabsTrigger value="crates">
+              <Gift className="w-4 h-4 mr-2" />
+              Mystery Crates
             </TabsTrigger>
           </TabsList>
 
@@ -161,6 +201,97 @@ const Marketplace = () => {
           <TabsContent value="nfts" className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {filterItems('nft').map(renderItemCard)}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="crates" className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Common Mystery Crate */}
+              <Card className="border-2 border-blue-200 bg-blue-50 overflow-hidden">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center gap-2">
+                      <div className="text-4xl">📦</div>
+                      Belief Crate
+                    </CardTitle>
+                    <Badge className="bg-blue-500 text-white">
+                      Common
+                    </Badge>
+                  </div>
+                  <CardDescription>
+                    Common rewards with guaranteed XP boosters and platform coins
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-blue-600 mb-2">50 XP</div>
+                    <div className="text-sm text-muted-foreground mb-4">Required to Open</div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h4 className="font-semibold">Possible Rewards:</h4>
+                    <div className="space-y-1 text-sm text-muted-foreground">
+                      <div>• XP Booster (60% chance)</div>
+                      <div>• Platform Coins (30% chance)</div>
+                      <div>• Lucky Badge (10% chance)</div>
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <Button
+                    className="w-full"
+                    onClick={() => handleOpenMysteryCrate('common_crate')}
+                    disabled={!progress || progress.xp < 50}
+                  >
+                    <Zap className="w-4 h-4 mr-2" />
+                    {progress && progress.xp >= 50 ? 'Open for 50 XP' : 'Insufficient XP'}
+                  </Button>
+                </CardFooter>
+              </Card>
+
+              {/* Rare Mystery Crate */}
+              <Card className="border-2 border-purple-200 bg-purple-50 overflow-hidden">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center gap-2">
+                      <div className="text-4xl">💎</div>
+                      Enchanted Belief Crate
+                    </CardTitle>
+                    <Badge className="bg-purple-500 text-white">
+                      Rare
+                    </Badge>
+                  </div>
+                  <CardDescription>
+                    Premium rewards with higher drop rates and exclusive items
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-purple-600 mb-2">150 XP</div>
+                    <div className="text-sm text-muted-foreground mb-4">Required to Open</div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h4 className="font-semibold">Possible Rewards:</h4>
+                    <div className="space-y-1 text-sm text-muted-foreground">
+                      <div>• XP Booster (40% chance)</div>
+                      <div>• Platform Coins (35% chance)</div>
+                      <div>• Mystery Badge (20% chance)</div>
+                      <div>• Mystic Title (5% chance)</div>
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <Button
+                    className="w-full"
+                    onClick={() => handleOpenMysteryCrate('rare_crate')}
+                    disabled={!progress || progress.xp < 150}
+                  >
+                    <Zap className="w-4 h-4 mr-2" />
+                    {progress && progress.xp >= 150 ? 'Open for 150 XP' : 'Insufficient XP'}
+                  </Button>
+                </CardFooter>
+              </Card>
             </div>
           </TabsContent>
         </Tabs>

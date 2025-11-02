@@ -1,20 +1,27 @@
 import React, { createContext, useContext, ReactNode } from "react";
-import { useAptosWallet } from "@/aptos/hooks/useAptosWallet";
+import { useModernAptosWallet } from "@/aptos/hooks/useModernAptosWallet";
 import { Account } from "@aptos-labs/ts-sdk";
+import { WalletInfo, WalletBalance } from "@/types/wallet";
+import { WalletInfo as WalletAdapterInfo } from "@/aptos/wallets/AptosWalletAdapter";
 
 interface WalletContextType {
   // Connection state
   isConnected: boolean;
   isConnecting: boolean;
   account: Account | null;
-  walletInfo: any;
-  balance: any;
-  network: string;
+  walletInfo: WalletInfo | null;
+  balance: WalletBalance | null;
+  network: string; // Keep as string for broader compatibility
+  selectedWallet: string | null;
+
+  // Wallet detection
+  availableWallets: WalletAdapterInfo[]; // Use wallet adapter info for detection
+  installedWallets: WalletAdapterInfo[]; // Use wallet adapter info for detection
 
   // Actions
-  connect: (privateKey?: string) => Promise<void>;
+  connect: (walletName: string, privateKey?: string) => Promise<void>;
   disconnect: () => void;
-  switchNetwork: (network: string) => Promise<void>;
+  switchNetwork: (network: string) => Promise<void>; // Keep as string for compatibility
   refreshBalance: () => Promise<void>;
 
   // Utilities
@@ -29,7 +36,7 @@ interface WalletProviderProps {
 }
 
 export const WalletProvider = ({ children }: WalletProviderProps) => {
-  const walletHook = useAptosWallet();
+  const walletHook = useModernAptosWallet();
 
   return (
     <WalletContext.Provider value={walletHook}>
