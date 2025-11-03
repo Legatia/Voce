@@ -7,9 +7,22 @@ import { truthRewardsService } from '@/aptos/services/truthRewards';
 import { financialSystemService } from '@/aptos/services/financialSystemService';
 import { onChainLevelService } from '@/aptos/services/onchainLevels';
 
+// Type declaration for legacy Petra wallet
+declare global {
+  interface Window {
+    petra?: {
+      signAndSubmitTransaction: (transaction: any) => Promise<any>;
+      connect: () => Promise<any>;
+      disconnect: () => Promise<void>;
+      isConnected: () => Promise<boolean>;
+      getAccount: () => Promise<any>;
+    };
+  }
+}
+
 export const ContractIntegrationTest: React.FC = () => {
   const { account, isConnected } = useWallet();
-  const { signAndSubmitTransaction, wallet, connected } = useAptosWallet();
+  const { signAndSubmitTransaction, wallet, connected, account: aptosAccount, network } = useAptosWallet();
   const [testResults, setTestResults] = useState<Record<string, any>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
@@ -18,39 +31,86 @@ export const ContractIntegrationTest: React.FC = () => {
   console.log('🔍 Wallet Debug:', {
     isConnected: isConnected || connected,
     account: account?.accountAddress?.toString(),
+    aptosAccount: aptosAccount?.address?.toString(),
     wallet: wallet?.name,
-    hasSignFunction: !!signAndSubmitTransaction
+    hasSignFunction: !!signAndSubmitTransaction,
+    walletMethods: wallet ? Object.keys(wallet) : 'No wallet object',
+    network: network || 'unknown'
   });
 
   const initializeContract = async () => {
     const isWalletConnected = isConnected || connected;
-    if (!isWalletConnected || !signAndSubmitTransaction) {
+    if (!isWalletConnected) {
       alert('Please connect your wallet first');
       return;
     }
 
     setIsInitializing(true);
     try {
-      const payload = {
-        type: "entry_function_payload",
-        function: `${import.meta.env.VITE_VOCE_ADMIN_ADDRESS || "b244f93f5d9dd71073cae0e77a4c8ee093d5562a1b89f03aaf3a828fb390c2c3"}::prediction_market::initialize`,
-        type_arguments: [],
-        arguments: []
-      };
+      // Try modern wallet adapter first
+      if (signAndSubmitTransaction && typeof signAndSubmitTransaction === 'function') {
+        console.log('🔍 Trying modern wallet adapter...');
 
-      console.log('🚀 Sending transaction payload:', payload);
-      console.log('🔍 Wallet function available:', typeof signAndSubmitTransaction);
+        const contractAddress = import.meta.env.VITE_VOCE_ADMIN_ADDRESS || "b244f93f5d9dd71073cae0e77a4c8ee093d5562a1b89f03aaf3a828fb390c2c3";
+        const functionName = `${contractAddress}::prediction_market::initialize`;
 
-      const response = await signAndSubmitTransaction(payload);
-      console.log('✅ Contract initialized successfully:', response);
-      alert('Contract initialized successfully! Please wait a few seconds for the transaction to process, then test again.');
+        const payload = {
+          type: "entry_function_payload",
+          function: functionName,
+          type_arguments: [],
+          arguments: []
+        };
 
-      // Re-run tests after initialization
-      setTimeout(() => testContractConnection(), 3000);
+        console.log('🚀 Modern payload being sent:', payload);
+
+        const response = await signAndSubmitTransaction(payload);
+        console.log('✅ Contract initialized successfully with modern wallet:', response);
+        alert('Contract initialized successfully! Please wait a few seconds for the transaction to process, then test again.');
+
+        // Re-run tests after initialization
+        setTimeout(() => testContractConnection(), 3000);
+        return;
+      }
+
+      // Fallback to legacy Petra API
+      console.log('🔄 Falling back to legacy Petra API...');
+
+      if (typeof window !== 'undefined' && window.petra) {
+        const contractAddress = import.meta.env.VITE_VOCE_ADMIN_ADDRESS || "b244f93f5d9dd71073cae0e77a4c8ee093d5562a1b89f03aaf3a828fb390c2c3";
+
+        const payload = {
+          type: "entry_function_payload",
+          function: `${contractAddress}::prediction_market::initialize`,
+          type_arguments: [],
+          arguments: []
+        };
+
+        console.log('🚀 Legacy payload being sent:', payload);
+
+        const response = await window.petra.signAndSubmitTransaction(payload);
+        console.log('✅ Contract initialized successfully with legacy Petra:', response);
+        alert('Contract initialized successfully! Please wait a few seconds for the transaction to process, then test again.');
+
+        // Re-run tests after initialization
+        setTimeout(() => testContractConnection(), 3000);
+      } else {
+        throw new Error('No wallet is available. Please connect a wallet first.');
+      }
+
     } catch (error) {
       console.error('❌ Failed to initialize contract:', error);
+      console.error('❌ Error stack:', error?.stack);
       console.error('❌ Error details:', JSON.stringify(error, null, 2));
-      alert(`Failed to initialize contract: ${error.message || error.toString()}`);
+
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+
+      if (errorMessage.includes("Cannot use 'in' operator")) {
+        alert('Wallet adapter compatibility issue detected. This is a known issue with some wallet versions. Please try:\n1. Refreshing the page\n2. Reconnecting your wallet\n3. Using a different wallet (Martian instead of Petra)\n4. Checking for wallet updates');
+      } else if (errorMessage.includes('User rejected')) {
+        alert('Transaction was cancelled. Please try again if you want to initialize the contract.');
+      } else {
+        alert(`Failed to initialize contract: ${errorMessage}`);
+      }
     } finally {
       setIsInitializing(false);
     }

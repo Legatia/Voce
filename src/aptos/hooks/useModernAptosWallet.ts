@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
-import { Network } from "@aptos-labs/ts-sdk";
+import { Network, Aptos, AptosConfig } from "@aptos-labs/ts-sdk";
 import { useToast } from "@/hooks/use-toast";
 import { WalletInfo, WalletBalance } from "@/types/wallet";
 
@@ -131,11 +131,20 @@ export const useModernAptosWallet = (): UseModernAptosWalletReturn => {
     if (!account?.address) return;
 
     try {
-      // Mock balance fetch - in reality would call Aptos RPC
-      const mockBalance = Math.random() * 10; // Random balance for demo
+      // Create Aptos client
+      const config = new AptosConfig({
+        network: network === "mainnet" ? Network.MAINNET : Network.TESTNET,
+      });
+      const client = new Aptos(config);
+
+      // Fetch real balance from Aptos RPC
+      const balance = await client.getAccountAPTAmount({
+        accountAddress: account.address
+      });
+
       setBalance({
-        balance: mockBalance,
-        balanceInOctas: BigInt(Math.floor(mockBalance * 100000000)),
+        balance: parseFloat(balance),
+        balanceInOctas: BigInt(Math.floor(parseFloat(balance) * 100000000)),
       });
     } catch (error) {
       console.error("Failed to refresh balance:", error);
@@ -144,7 +153,7 @@ export const useModernAptosWallet = (): UseModernAptosWalletReturn => {
         balanceInOctas: BigInt(0),
       });
     }
-  }, [account]);
+  }, [account, network]);
 
   const formatAddress = useCallback((address: string | any, length: number = 8) => {
     if (!address) return "";
